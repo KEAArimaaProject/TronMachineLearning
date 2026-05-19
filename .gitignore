@@ -6,4 +6,4 @@ __pycache__
 checkpoints/*
 tron_genomes\*
 /src/checkpoints
-/src/tron_genomes
+tron_tensorboard/*

@@ -28,36 +28,38 @@ try:
     @jit(nopython=True, cache=True)
     def _detect_head_collisions_numba(x, y, valid, width, height):
         """
-        Numba-accelerated head-to-head detection.
-        Uses array-based position encoding instead of dictionaries.
+        Numba-accelerated head-to-head collision detection.
+        Array reused across environments to avoid allocations.
         """
         envs, players = x.shape
         head_hit = np.zeros((envs, players), dtype=np.bool_)
 
+        # Pre‑allocate once, outside the environment loop
+        max_positions = width * height
+        pos_to_player = np.full(max_positions, -1, dtype=np.int32)
+
         for e in range(envs):
-            # Use array to store position -> player mapping
-            # Maximum possible positions = width * height
-            max_positions = width * height
-            pos_to_player = np.full(max_positions, -1, dtype=np.int32)
+            # Reset the mapping array for this environment
+            pos_to_player[:] = -1
 
             for p in range(players):
                 if valid[e, p]:
-                    pos_key = int(x[e, p]) * width + int(y[e, p])
-                    if pos_key >= 0 and pos_key < max_positions:
-                        prev_player = pos_to_player[pos_key]
-                        if prev_player != -1:
-                            head_hit[e, p] = True
-                            head_hit[e, prev_player] = True
-                        else:
-                            pos_to_player[pos_key] = p
+                    pos_key = int(y[e, p]) * width + int(x[e, p])  # Correct hash
+                    prev_player = pos_to_player[pos_key]
+                    if prev_player != -1:
+                        head_hit[e, p] = True
+                        head_hit[e, prev_player] = True
+                    else:
+                        pos_to_player[pos_key] = p
 
         return head_hit
 
     NUMBA_AVAILABLE = True
 except ImportError:
     NUMBA_AVAILABLE = False
-    def _detect_head_collisions_numba(x, y, valid, width, height):
-        raise RuntimeError("Numba not installed")
+    # Dummy function – never used when Numba is missing (use_numba is forced to False)
+    def _detect_head_collisions_numba(*args, **kwargs):
+        return None
 
 
 @dataclass(slots=True)
@@ -247,7 +249,7 @@ class TronBatchModel:
         valid = active & in_bounds
         trail_hit[valid] = self.occupied[e_idx[valid], y[valid], x[valid]]
 
-        # Head‑to‑head collisions – OPTIMISED O(P) version
+        # Head‑to‑head collisions – OPTIMISED O(P) version (hashing bug FIXED)
         if self._use_numba:
             head_hit = _detect_head_collisions_numba(x, y, valid, self.width, self.height)
         else:
@@ -283,17 +285,16 @@ class TronBatchModel:
         return StepResult(reward, self.done.copy(), self.alive.copy(), died)
 
     def _detect_head_collisions_python(self, x, y, valid):
-        """Pure Python fallback (still O(P) per env)."""
+        """Pure Python fallback (O(P) per env) – CORRECT hash."""
+        print("Fallback collision used")
         envs, players = x.shape
         head_hit = np.zeros((envs, players), dtype=bool)
 
         for e in range(envs):
-            # Use dictionary for position -> player mapping
             pos_map = {}
             for p in range(players):
                 if valid[e, p]:
-                    # Ensure integer positions
-                    key = int(x[e, p]) * self.width + int(y[e, p])
+                    key = int(y[e, p]) * self.width + int(x[e, p])   # y * width + x
                     if key in pos_map:
                         head_hit[e, p] = True
                         head_hit[e, pos_map[key]] = True

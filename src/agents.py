@@ -5,7 +5,7 @@ from typing import Any, Callable
 
 import numpy as np
 
-from batch_model import TronBatchModel
+from model import TronBatchModel
 from controller import Controller, GreedySpaceController
 from src.view import GameView
 
@@ -233,16 +233,3 @@ class TronBattleRunner:
             remaining_episodes -= batch_size
 
         return BattleResult(wins=wins, draws=draws, steps=total_steps // episodes)
-
-def watch_policy(policy, players=2, width=32, height=32, scale=16, fps=20, seed=0):
-    model = TronBatchModel(width=width, height=height, players=players, envs=1, keep_owner=True, seed=seed)
-    view = GameView(model, scale=scale, fps=fps)
-    try:
-        while view.poll():
-            if view.take_restart_request():
-                model.reset()
-            if not model.done[0]:
-                model.step(policy.actions(model))
-            view.render(model)
-    finally:
-        view.close()
