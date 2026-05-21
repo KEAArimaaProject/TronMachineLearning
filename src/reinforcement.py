@@ -78,7 +78,7 @@ class TronSingleAgentEnv(gym.Env):
         self.seed = seed
 
         # Internal vectorized model (single environment)
-        self.model = TronBatchModel(
+        self.board_model = TronBatchModel(
             width=width,
             height=height,
             players=players,
@@ -102,8 +102,8 @@ class TronSingleAgentEnv(gym.Env):
             self.opponent = OpponentAdapter(raw_controller)
 
         # Observation space from `observe_lite` for player 0
-        self.model.reset()
-        obs_lite = self.model.observe_lite()[0, 0]
+        self.board_model.reset()
+        obs_lite = self.board_model.observe_lite()[0, 0]
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=obs_lite.shape, dtype=np.float32
         )
@@ -116,20 +116,20 @@ class TronSingleAgentEnv(gym.Env):
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         super().reset(seed=seed)
         if seed is not None:
-            self.model.rng = np.random.default_rng(seed)
+            self.board_model.rng = np.random.default_rng(seed)
 
-        self.model.reset(env_ids=[0])
-        obs = self.model.observe_lite()[0, 0]
+        self.board_model.reset(env_ids=[0])
+        obs = self.board_model.observe_lite()[0, 0]
         return obs, {}
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
         # Build action array for all players
         actions = np.zeros((1, self.players), dtype=np.int8)
         actions[0, 0] = action
-        opponents_actions = self.opponent.act(self.model, env_id=0)
+        opponents_actions = self.opponent.act(self.board_model, env_id=0)
         actions[0, 1:] = opponents_actions
 
-        result = self.model.step(actions)
+        result = self.board_model.step(actions)
 
         reward = float(result.reward[0, 0])
         done_game = result.done[0]
@@ -145,7 +145,7 @@ class TronSingleAgentEnv(gym.Env):
             alive_players = np.where(result.alive[0])[0]
             info["winner"] = int(alive_players[0]) if len(alive_players) == 1 else -1
 
-        obs = self.model.observe_lite()[0, 0]
+        obs = self.board_model.observe_lite()[0, 0]
         return obs, reward, terminated, False, info
 
     def render(self) -> Optional[np.ndarray]:
@@ -153,12 +153,12 @@ class TronSingleAgentEnv(gym.Env):
         if self.render_mode is None:
             return None
 
-        owner = self.model.owner[0] if self.model.owner is not None else None
+        owner = self.board_model.owner[0] if self.board_model.owner is not None else None
         if owner is None:
             owner = np.zeros((self.height, self.width), dtype=np.uint8)
             for p in range(self.players):
-                if self.model.alive[0, p]:
-                    px, py = self.model.pos[0, p]
+                if self.board_model.alive[0, p]:
+                    px, py = self.board_model.pos[0, p]
                     if 0 <= px < self.width and 0 <= py < self.height:
                         owner[py, px] = p + 1
         else:
@@ -174,8 +174,8 @@ class TronSingleAgentEnv(gym.Env):
 
         img = colours[owner]
         for p in range(self.players):
-            if self.model.alive[0, p]:
-                px, py = self.model.pos[0, p]
+            if self.board_model.alive[0, p]:
+                px, py = self.board_model.pos[0, p]
                 if 0 <= px < self.width and 0 <= py < self.height:
                     img[py, px] = [255, 255, 255]
 
@@ -241,7 +241,6 @@ def main():
         n_steps=args.n_steps,
         batch_size=args.batch_size,
         n_epochs=args.n_epochs,
-        gamma=0.99,
         gae_lambda=0.95,
         clip_range=0.2,
         ent_coef=0.01,

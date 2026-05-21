@@ -1,6 +1,5 @@
 from datetime import datetime
 import json
-from abc import ABC, abstractmethod
 from pathlib import Path
 
 import numpy as np
@@ -10,34 +9,19 @@ from src.view import GameView
 
 
 def run_ga(
-    generations=20,
-    pop_size=40,
-    elite_count=6,
-    hidden=32,
-    eval_envs=1024,
+    generations,
+    pop_size,
+    elite_count,
+    hidden,
+    eval_envs,
 
     players=2,
     width=32,
     height=32,
     seed=0,
-    opponent=None,
-
-    # New options:
-    evaluation_mode="sample",  # "self", "fixed", "sample", "round_robin"
-    sample_k=4,                # for evaluation_mode="sample": opponents sampled per genome
-    round_robin_pairs=None,    # optional subset of pairs for round_robin (list of (i,j))
-    hall_of_fame=None,         # list/array of genomes to evaluate against (optional)
 ):
     """
     Genetic algorithm main loop.
-
-    New parameter `evaluation_mode` controls how genomes are evaluated:
-      - "self": original behaviour — the same genome controls all players (symmetric self-play).
-      - "fixed": evaluate each genome as player 0 vs the `opponent` you pass in (use evaluate_genome_vs_opponent).
-      - "sample": sample opponents from the current population (recommended).
-      - "round_robin": evaluate pairwise (expensive).
-
-    Default changed to "sample" because symmetric self-play provides poor ranking signal.
     """
 
     rng = np.random.default_rng(seed)
@@ -50,33 +34,10 @@ def run_ga(
     best = None
 
     for gen in range(generations):
-        if evaluation_mode == "self":
-            fitness = np.array([
-                evaluate_genome(g, found_parameters, hidden=hidden, envs=eval_envs, seed=seed + gen)
-                for g in population
-            ])
-        elif evaluation_mode == "fixed":
-            # requires `opponent` argument to be provided (controller instance or class)
-            if opponent is None:
-                raise ValueError("evaluation_mode='fixed' requires `opponent` argument")
-            fitness = np.array([
-                evaluate_genome_vs_opponent(g, found_parameters, opponent, hidden=hidden, envs=eval_envs, seed=seed + gen, players=players)
-                for g in population
-            ])
-        elif evaluation_mode == "sample":
-            fitness = evaluate_population_vs_samples(
-                population, found_parameters,
-                hidden=hidden, envs=eval_envs, seed=seed + gen,
-                players=players, sample_k=sample_k,
-            )
-        elif evaluation_mode == "round_robin":
-            fitness = evaluate_population_round_robin(
-                population, found_parameters,
-                hidden=hidden, envs=eval_envs, seed=seed + gen,
-                players=players, pairs=round_robin_pairs,
-            )
-        else:
-            raise ValueError(f"unknown evaluation_mode: {evaluation_mode}")
+        fitness = np.array([
+            evaluate_genome(g, found_parameters, hidden=hidden, envs=eval_envs, seed=seed + gen)
+            for g in population
+        ])
 
         order = np.argsort(fitness)[::-1]
         population = population[order]
@@ -109,14 +70,12 @@ def make_child(parent_a, parent_b, rng, mutation_std=0.03, mutation_rate=0.05):
     return child.astype(np.float32)
 
 
-def evaluate_genome(genome, obs_dim, *, hidden=32, envs=1024, seed=0):
+def evaluate_genome(genome, obs_dim, *, hidden, envs, seed):
     _policy = MLPPolicy(obs_dim, hidden=hidden, genome=genome)
     # Default: policy controls all players (symmetric self-play)
     scores = evaluate_controller(_policy, envs=envs, seed=seed)
-    return float(
-        0.25 * scores["win_rate_per_player"].mean()
-        + 0.001 * scores["mean_length"]
-    )
+    return calculate_fitness(scores["win_rate_per_player"].mean(), scores["mean_length"])
+
 
 
 def evaluate_genome_vs_opponent(genome, obs_dim, opponent, *, hidden=32, envs=1024, seed=0, players=2):
@@ -136,10 +95,8 @@ def evaluate_genome_vs_opponent(genome, obs_dim, opponent, *, hidden=32, envs=10
         controllers[p] = _policy if p == 0 else opp_inst
 
     scores = evaluate_controller(controllers, envs=envs, seed=seed, players=players)
-    return float(
-        0.25 * scores["win_rate_per_player"].mean()
-        + 0.001 * scores["mean_length"]
-    )
+    return calculate_fitness(scores["win_rate_per_player"].mean(), scores["mean_length"])
+
 
 
 def evaluate_controller(controller, *, envs=4096, width=32, height=32, players=2, max_ticks=512, seed=0):
@@ -332,10 +289,11 @@ def evaluate_population_vs_samples(population, obs_dim, *,
         controllers = [policy_i] + opp_controllers
         result = evaluate_controller(controllers, envs=envs, seed=seed + i, players=players)
 
-        # Use player 0's win-rate as the main signal, keep length bonus.
-        fitness[i] = 0.25 * float(result["win_rate_per_player"][0]) + 0.001 * float(result["mean_length"])
+        fitness[i] = calculate_fitness(result["win_rate_per_player"][0], result["mean_length"])
     return fitness
 
+def calculate_fitness(winrate, mean_length):
+    return 0.25 * float(winrate) + 0.001 * float(mean_length)
 
 def evaluate_population_round_robin(population, obs_dim, *,
                                     hidden=32, envs=1024, seed=0,

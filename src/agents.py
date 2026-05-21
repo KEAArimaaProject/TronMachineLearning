@@ -200,17 +200,8 @@ class TronBattleRunner:
                 for p, agent in enumerate(agents):
                     # Get observation for this player (all envs)
                     obs = None
-                    try:
-                        observation_type = agent.observation_type
-
-                    except AttributeError:
-                        observation_type = agent.observation_type
-                    if observation_type == "lite":
-                        obs = model.observe_lite()  # [envs, players, feat]
-                        obs = obs[env_mask, p]  # shape [batch, feat]
-                    else:  # grid
-                        obs = model.observe_grid()  # [envs, 1+players, h, w]
-                        obs = obs[env_mask]  # shape [batch, 1+players, h, w]
+                    obs = model.observe_lite()  # [envs, players, feat]
+                    obs = obs[env_mask, p]  # shape [batch, feat]
                     # Legal actions for this player
                     legal = model.legal_actions()[env_mask, p]  # [batch, 3]
 

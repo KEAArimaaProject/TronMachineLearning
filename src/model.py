@@ -326,35 +326,96 @@ class TronBatchModel:
         """
         Compact float observation [envs, players, features].
 
+        Changes:
+        - The 3-way legal-action booleans are replaced by distances (normalized)
+          to the nearest wall along straight/left/right directions.
+        - For each other player we include: rel_x, rel_y (normalized), rel_alive,
+          and the opponent heading one-hot (4 dims).
+
         Features per player:
-            legal_straight/left/right (3)
-            x_norm, y_norm (2)
-            heading one-hot (4)
-            alive (1)
-            for each other player: rel_x, rel_y, alive (3 * (players - 1))
+          distances(3)  -- distance for straight/left/right
+          x_norm, y_norm (2)
+          heading one-hot (4)
+          alive (1)
+          for each other player:
+            rel_x, rel_y (2), rel_alive (1), rel_heading_onehot (4) => 7*(players-1)
         """
-        legal = self.legal_actions().astype(np.float32)
+        # --- Distance-to-wall for each candidate direction (ray marching) ---
+        candidate_heading = (self.heading[:, :, None] + TURN[None, None, :]) & 3
+        candidate_delta = DIR_VECTORS[candidate_heading]  # int deltas
+
+        envs, players = self.envs, self.players
+        max_search = max(self.width, self.height)
+
+        pos0 = self.pos[:, :, None, :].astype(np.int32)  # (envs, players, 1, 2)
+        delta = candidate_delta.astype(np.int32)  # (envs, players, 3, 2)
+
+        ray_valid = (self.alive[:, :, None] & (~self.done[:, None, None]))  # (envs, players, 1)
+        ray_valid = np.broadcast_to(ray_valid, (envs, players, 3))
+
+        distances = np.full((envs, players, 3), max_search, dtype=np.int32)
+        still_searching = ray_valid.copy()
+
+        # Ray march steps 1..max_search
+        for s in range(1, max_search + 1):
+            pos_s = pos0 + delta * s  # (envs, players, 3, 2)
+            x_s = pos_s[..., 0]
+            y_s = pos_s[..., 1]
+
+            in_bounds_s = (0 <= x_s) & (x_s < self.width) & (0 <= y_s) & (y_s < self.height)
+            hit_s = ~in_bounds_s.copy()  # out-of-bounds counts as a hit
+
+            # Check occupied only where in-bounds and still searching
+            mask = in_bounds_s & still_searching
+            if mask.any():
+                idx = np.where(mask)
+                xs = x_s[idx]
+                ys = y_s[idx]
+                env_idx = idx[0]
+                occ_vals = self.occupied[env_idx, ys, xs]
+                hit_s[idx] = occ_vals
+
+            new_hits = still_searching & hit_s
+            if new_hits.any():
+                distances[new_hits] = s
+                still_searching[new_hits] = False
+
+            if not still_searching.any():
+                break
+
+        distances[~ray_valid] = 0
+        distances_norm = 1 / (distances.astype(np.float32) + 1)
+
+        # --- Position / heading / alive parts ---
         xy = self.pos.astype(np.float32)
         xy[..., 0] /= self._width_norm
         xy[..., 1] /= self._height_norm
-        heading_oh = np.eye(4, dtype=np.float32)[self.heading]
+        heading_oh = np.eye(4, dtype=np.float32)[self.heading]  # (envs, players, 4)
         alive = self.alive[..., None].astype(np.float32)
 
+        # --- Relative features to other players: rel_x, rel_y, rel_alive, rel_heading_onehot ---
+        heading_oh_all = heading_oh  # alias for clarity
         rel_parts = []
         for i in range(self.players):
             parts = []
             for j in range(self.players):
                 if i == j:
                     continue
+                # relative dxy normalized
                 dxy = (self.pos[:, j] - self.pos[:, i]).astype(np.float32)
                 dxy[:, 0] /= self._width_norm
                 dxy[:, 1] /= self._height_norm
-                parts.append(np.concatenate([dxy, self.alive[:, j:j+1].astype(np.float32)], axis=1))
+
+                alive_j = self.alive[:, j:j + 1].astype(np.float32)  # (envs,1)
+                heading_j = heading_oh_all[:, j, :]  # (envs,4)
+
+                # concat: dxy (2), alive_j (1), heading_j (4) -> 7 cols
+                parts.append(np.concatenate([dxy, alive_j, heading_j], axis=1))
             rel_parts.append(np.concatenate(parts, axis=1))
-        rel = np.stack(rel_parts, axis=1)
+        rel = np.stack(rel_parts, axis=1)  # (envs, players, 7*(players-1))
 
-        return np.concatenate([legal, xy, heading_oh, alive, rel], axis=2)
-
+        # final observation concat: distances_norm (3), xy (2), heading_oh (4), alive(1), rel
+        return np.concatenate([distances_norm, xy, heading_oh, alive, rel], axis=2)
     def observe_grid(self) -> np.ndarray:
         """
         CNN-friendly observation [envs, 1 + players, height, width].
