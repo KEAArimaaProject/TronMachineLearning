@@ -1,11 +1,11 @@
 {
-  "created_at": "2026-05-19T14:07:11",
-  "genome_file": "tron_20260519_140711.npy",
-  "fitness": 0.7463535156250001,
+  "created_at": "2026-05-21T15:50:46",
+  "genome_file": "tron_20260521_155046.npy",
+  "fitness": 0.7461015625,
   "model": {
     "policy_type": "MLPPolicy",
-    "obs_dim": 13,
-    "hidden": 8,
+    "obs_dim": 17,
+    "hidden": 16,
     "action_count": 3
   },
   "environment": {
@@ -14,10 +14,10 @@
     "players": 2
   },
   "genetic_algorithm": {
-    "generations": 10,
+    "generations": 12,
     "pop_size": 32,
     "elite_count": 6,
-    "eval_envs": 512,
+    "eval_envs": 1024,
     "seed": 42
   }
 }

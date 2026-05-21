@@ -15,9 +15,9 @@ def run_ga(
     hidden,
     eval_envs,
 
-    players=2,
-    width=32,
-    height=32,
+    width,
+    height,
+    players,
     seed=0,
 ):
     """
@@ -75,28 +75,6 @@ def evaluate_genome(genome, obs_dim, *, hidden, envs, seed):
     # Default: policy controls all players (symmetric self-play)
     scores = evaluate_controller(_policy, envs=envs, seed=seed)
     return calculate_fitness(scores["win_rate_per_player"].mean(), scores["mean_length"])
-
-
-
-def evaluate_genome_vs_opponent(genome, obs_dim, opponent, *, hidden=32, envs=1024, seed=0, players=2):
-    """Evaluate a genome playing as player 0 against `opponent` for other players.
-
-    `opponent` may be a controller instance or a controller class (which will be instantiated).
-    """
-    _policy = MLPPolicy(obs_dim, hidden=hidden, genome=genome)
-    if isinstance(opponent, type):
-        opp_inst = opponent()
-    else:
-        opp_inst = opponent
-
-    # Build per-player controllers: policy for player 0, opponent for others
-    controllers = [None] * players
-    for p in range(players):
-        controllers[p] = _policy if p == 0 else opp_inst
-
-    scores = evaluate_controller(controllers, envs=envs, seed=seed, players=players)
-    return calculate_fitness(scores["win_rate_per_player"].mean(), scores["mean_length"])
-
 
 
 def evaluate_controller(controller, *, envs=4096, width=32, height=32, players=2, max_ticks=512, seed=0):
@@ -263,91 +241,8 @@ def export_genome(
 # Evaluation helpers
 # ---------------------------
 
-def evaluate_population_vs_samples(population, obs_dim, *,
-                                   hidden=32, envs=1024, seed=0,
-                                   players=2, sample_k=4):
-    """
-    For every genome in `population` evaluate it as player 0 against `sample_k`
-    sampled opponents from the population (sampled with replacement).
-    Returns a 1-D numpy array of fitness values (same ordering as population).
-
-    Fitness uses the same formula as evaluate_genome but measures player-0 win-rate.
-    """
-    rng = np.random.default_rng(seed)
-    N = len(population)
-    fitness = np.zeros(N, dtype=np.float32)
-
-    for i, genome in enumerate(population):
-        policy_i = MLPPolicy(obs_dim, hidden=hidden, genome=genome)
-
-        # If players > 2 we sample (players-1) opponents for each match.
-        opp_controllers = []
-        for p in range(1, players):
-            j = rng.integers(N)
-            opp_controllers.append(MLPPolicy(obs_dim, hidden=hidden, genome=population[j]))
-
-        controllers = [policy_i] + opp_controllers
-        result = evaluate_controller(controllers, envs=envs, seed=seed + i, players=players)
-
-        fitness[i] = calculate_fitness(result["win_rate_per_player"][0], result["mean_length"])
-    return fitness
-
 def calculate_fitness(winrate, mean_length):
     return 0.25 * float(winrate) + 0.001 * float(mean_length)
-
-def evaluate_population_round_robin(population, obs_dim, *,
-                                    hidden=32, envs=1024, seed=0,
-                                    players=2, pairs=None):
-    """
-    Round-robin (pairwise) evaluation.
-
-    If `pairs` is provided it should be an iterable of (i, j) tuples specifying
-    which pairs to evaluate. Otherwise every unordered pair i < j is evaluated.
-    For players > 2 this function evaluates each pair as player 0 vs player 1
-    (other player slots, if any, are filled with random members of the population).
-    Returns a 1-D numpy array of averaged fitness per genome.
-    """
-    rng = np.random.default_rng(seed)
-    N = len(population)
-    wins = np.zeros(N, dtype=np.float32)
-    matches = np.zeros(N, dtype=np.int32)
-
-    if pairs is None:
-        pair_list = [(i, j) for i in range(N) for j in range(i + 1, N)]
-    else:
-        pair_list = list(pairs)
-
-    for (i, j) in pair_list:
-        p_i = MLPPolicy(obs_dim, hidden=hidden, genome=population[i])
-        p_j = MLPPolicy(obs_dim, hidden=hidden, genome=population[j])
-
-        # Build controllers for players=2 case first.
-        if players == 2:
-            controllers = [p_i, p_j]
-        else:
-            # Fill remaining slots with random population members
-            controllers = [None] * players
-            controllers[0] = p_i
-            controllers[1] = p_j
-            for p in range(2, players):
-                k = rng.integers(N)
-                controllers[p] = MLPPolicy(obs_dim, hidden=hidden, genome=population[k])
-
-        result = evaluate_controller(controllers, envs=envs, seed=seed + i + j, players=players)
-        # Add averaged win-rate contribution for these two genomes
-        wins[i] += result["win_rate_per_player"][0]
-        wins[j] += result["win_rate_per_player"][1]
-        matches[i] += 1
-        matches[j] += 1
-
-    # Avoid division by zero (if no matches for some genome)
-    avg_win = np.zeros(N, dtype=np.float32)
-    nonzero = matches > 0
-    avg_win[nonzero] = wins[nonzero] / matches[nonzero]
-
-    # Convert to same fitness scale (with small length bonus not easy to aggregate here)
-    # We'll approximate by using avg_win as primary signal.
-    return avg_win.astype(np.float32)
 
 
 # ---------------------------

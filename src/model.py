@@ -151,7 +151,6 @@ class TronBatchModel:
         self.tick = np.zeros(envs, dtype=np.int32, order='C')
 
         # Reusable buffer for legal_actions()
-        self._legal_cache = np.zeros((envs, players, 3), dtype=bool, order='C')
 
         self.reset()
 
@@ -302,25 +301,6 @@ class TronBatchModel:
                         pos_map[key] = p
         return head_hit
 
-    def legal_actions(self) -> np.ndarray:
-        """Return bool [envs, players, 3] for one-step safe actions."""
-        # Reuse preallocated buffer to avoid allocations
-        free = self._legal_cache
-        free.fill(False)
-
-        candidate_heading = (self.heading[:, :, None] + TURN[None, None, :]) & 3
-        candidate_delta = DIR_VECTORS[candidate_heading]
-        candidate_pos = self.pos[:, :, None, :] + candidate_delta
-        x = candidate_pos[..., 0]
-        y = candidate_pos[..., 1]
-
-        in_bounds = (0 <= x) & (x < self.width) & (0 <= y) & (y < self.height)
-
-        e = np.broadcast_to(np.arange(self.envs)[:, None, None], (self.envs, self.players, 3))
-        valid = in_bounds & self.alive[:, :, None] & (~self.done[:, None, None])
-        free[valid] = ~self.occupied[e[valid], y[valid], x[valid]]
-
-        return free
 
     def observe_lite(self) -> np.ndarray:
         """
@@ -416,21 +396,7 @@ class TronBatchModel:
 
         # final observation concat: distances_norm (3), xy (2), heading_oh (4), alive(1), rel
         return np.concatenate([distances_norm, xy, heading_oh, alive, rel], axis=2)
-    def observe_grid(self) -> np.ndarray:
-        """
-        CNN-friendly observation [envs, 1 + players, height, width].
 
-        Channel 0 is occupied cells. Channels 1..players are player heads.
-        This can be memory-heavy for large batches.
-        """
-        obs = np.zeros((self.envs, 1 + self.players, self.height, self.width), dtype=np.float32)
-        obs[:, 0] = self.occupied
-        e = np.arange(self.envs)[:, None]
-        p = np.arange(self.players)[None, :]
-        x = self.pos[..., 0]
-        y = self.pos[..., 1]
-        obs[e, p + 1, y, x] = self.alive.astype(np.float32)
-        return obs
 
     def auto_reset_done(self) -> np.ndarray:
         """Reset terminal envs and return their ids."""
