@@ -1,0 +1,23 @@
+{
+  "created_at": "2026-05-12T14:07:41",
+  "genome_file": "tron_20260512_140741.npy",
+  "fitness": 5.30765625,
+  "model": {
+    "policy_type": "MLPPolicy",
+    "obs_dim": 13,
+    "hidden": 16,
+    "action_count": 3
+  },
+  "environment": {
+    "width": 64,
+    "height": 48,
+    "players": 2
+  },
+  "genetic_algorithm": {
+    "generations": 16,
+    "pop_size": 32,
+    "elite_count": 4,
+    "eval_envs": 512,
+    "seed": 42
+  }
+}
