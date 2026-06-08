@@ -4,8 +4,8 @@ from pathlib import Path
 
 import numpy as np
 
-from src.model import TronBatchModel
-from src.view import GameView
+from model import TronBatchModel
+from view import GameView
 
 
 def run_ga(
