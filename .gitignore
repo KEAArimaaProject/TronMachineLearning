@@ -7,3 +7,4 @@ checkpoints/*
 tron_genomes\*
 /src/checkpoints
 tron_tensorboard/*
+training_runs/*

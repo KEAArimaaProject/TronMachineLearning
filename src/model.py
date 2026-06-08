@@ -152,6 +152,8 @@ class TronBatchModel:
 
         # Reusable buffer for legal_actions()
 
+
+
         self.reset()
 
     def reset(self, env_ids: Optional[Iterable[int] | np.ndarray] = None) -> None:
@@ -396,6 +398,34 @@ class TronBatchModel:
 
         # final observation concat: distances_norm (3), xy (2), heading_oh (4), alive(1), rel
         return np.concatenate([distances_norm, xy, heading_oh, alive, rel], axis=2)
+
+    def legal_actions(self) -> np.ndarray:
+        """
+        Returns a boolean array [envs, players, 3] indicating which actions
+        (0=straight, 1=left, 2=right) do NOT lead to an immediate death.
+        """
+        cur_heading = self.heading
+        candidate_heading = (cur_heading[:, :, None] + TURN[None, None, :]) & 3
+        delta = DIR_VECTORS[candidate_heading]  # (envs, players, 3, 2)
+        new_pos = self.pos[:, :, None, :] + delta
+        x = new_pos[..., 0]
+        y = new_pos[..., 1]
+
+        in_bounds = (0 <= x) & (x < self.width) & (0 <= y) & (y < self.height)
+
+        # Check occupied only for in‑bounds positions to avoid IndexError
+        occupied_hit = np.zeros((self.envs, self.players, 3), dtype=bool)
+        if in_bounds.any():
+            e_idx, p_idx, a_idx = np.where(in_bounds)
+            xs = x[e_idx, p_idx, a_idx].astype(int)
+            ys = y[e_idx, p_idx, a_idx].astype(int)
+            occupied_hit[e_idx, p_idx, a_idx] = self.occupied[e_idx, ys, xs]
+
+        active = self.alive[:, :, None] & (~self.done[:, None, None])
+        legal = active & in_bounds & (~occupied_hit)
+        return legal
+
+
 
 
     def auto_reset_done(self) -> np.ndarray:

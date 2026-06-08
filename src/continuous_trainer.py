@@ -92,8 +92,23 @@ class ContinuousGATrainer:
         self._save_checkpoint(final=True)
         sys.exit(0)
 
+    def _load_latest_checkpoint(self):
+        """Find most recent checkpoint and resume."""
+        checkpoints = sorted(self.checkpoint_dir.glob("gen_*.npz"))
+        if not checkpoints:
+            return False
+        latest = checkpoints[-1]
+        data = np.load(latest, allow_pickle=True)
+        self.population = data["population"]
+        self.generation = int(data["generation"]) + 1   # resume from next generation
+        self.best_fitness = float(data["best_fitness"])
+        self.best_genome = data["best_genome"]
+        self.rng.bit_generator.state = data["rng_state"].item()
+        print(f"Resumed GA from {latest.name} at generation {self.generation}")
+        return True
+
     def _save_checkpoint(self, final: bool = False):
-        """Save full trainer state and best genome."""
+        """Save full trainer state and best genome with evaluation metrics."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         checkpoint_path = self.checkpoint_dir / f"gen_{self.generation:06d}_{timestamp}.npz"
         np.savez(
@@ -106,22 +121,12 @@ class ContinuousGATrainer:
         )
         print(f"Saved GA checkpoint: {checkpoint_path}")
 
-        # Also save the best genome in standard format
+        # Save best genome with evaluation stats
         if self.best_genome is not None:
-            metadata = {
-                "created_at": datetime.now().isoformat(timespec="seconds"),
-                "training_duration_seconds": time.time() - self.start_time,
-                "generation": self.generation,
-                "best_fitness": float(self.best_fitness),
-                "eval_envs": self.eval_envs,
-                "hidden": self.hidden,
-                "pop_size": self.pop_size,
-                "elite_count": self.elite_count,
-                "width": self.width,
-                "height": self.height,
-                "players": self.players,
-                "seed": self.seed,
-            }
+            # Evaluate best genome against greedy and random
+            eval_results = self._evaluate_and_log(self.best_genome)
+
+            # Use export_genome to save the genome file and base metadata
             genome_path, meta_path = export_genome(
                 self.best_genome,
                 obs_dim=self.obs_dim,
@@ -137,27 +142,20 @@ class ContinuousGATrainer:
                 seed=self.seed,
                 out_dir=self.output_dir / "genomes",
             )
-            # Augment metadata with training time
-            with open(meta_path, "r") as f:
-                old_meta = json.load(f)
-            old_meta.update(metadata)
-            with open(meta_path, "w") as f:
-                json.dump(old_meta, f, indent=2)
 
-    def _load_latest_checkpoint(self):
-        """Find most recent checkpoint and resume."""
-        checkpoints = sorted(self.checkpoint_dir.glob("gen_*.npz"))
-        if not checkpoints:
-            return False
-        latest = checkpoints[-1]
-        data = np.load(latest, allow_pickle=True)
-        self.population = data["population"]
-        self.generation = int(data["generation"]) + 1   # resume from next generation
-        self.best_fitness = float(data["best_fitness"])
-        self.best_genome = data["best_genome"]
-        self.rng.bit_generator.state = data["rng_state"].item()
-        print(f"Resumed GA from {latest.name} at generation {self.generation}")
-        return True
+            # Augment metadata with training time and win rates
+            with open(meta_path, "r") as f:
+                meta = json.load(f)
+            meta.update({
+                "training_duration_seconds": time.time() - self.start_time,
+                "generation": self.generation,
+                "winrate_vs_greedy": eval_results["winrate_vs_greedy"],
+                "winrate_vs_random": eval_results["winrate_vs_random"],
+                "mean_length_vs_greedy": eval_results["mean_length_vs_greedy"],
+                "mean_length_vs_random": eval_results["mean_length_vs_random"],
+            })
+            with open(meta_path, "w") as f:
+                json.dump(meta, f, indent=2)
 
     def _evaluate_and_log(self, genome: np.ndarray) -> Dict[str, float]:
         """Run baseline evaluation (vs greedy/random) for logging."""
@@ -293,7 +291,7 @@ class ContinuousRLTrainer:
         sys.exit(0)
 
     def _save_checkpoint(self, final: bool = False):
-        """Save PPO model and training state."""
+        """Save PPO model and training state with evaluation metrics."""
         if self.model is None:
             return
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -301,11 +299,18 @@ class ContinuousRLTrainer:
         self.model.save(str(model_path))
         print(f"Saved RL checkpoint: {model_path}")
 
-        # Also save a metadata json
+        # Evaluate current model
+        eval_results = self._evaluate_model()
+
+        # Save metadata
         metadata = {
             "timesteps": self.total_timesteps,
             "training_duration_seconds": time.time() - self.start_time,
             "checkpoint_type": "final" if final else "periodic",
+            "winrate_vs_greedy": eval_results["winrate_vs_greedy"],
+            "winrate_vs_random": eval_results["winrate_vs_random"],
+            "avg_survival_vs_greedy": eval_results["avg_survival_vs_greedy"],
+            "avg_survival_vs_random": eval_results["avg_survival_vs_random"],
             "config": {
                 "width": self.width,
                 "height": self.height,
@@ -332,24 +337,57 @@ class ContinuousRLTrainer:
         return True
 
     def _evaluate_model(self) -> Dict[str, float]:
-        """Evaluate current model vs greedy and random using run_match (see evaluate.py)."""
-        # Import here to avoid circular imports
-        from evaluate import run_match, RLPolicyWrapper
-        rl_wrapper = RLPolicyWrapper(self.model, player_id=0)
-        greedy_wrapper = GreedySpaceController()
-        random_wrapper = RandomController(seed=self.seed)
+        """Evaluate current model vs greedy and random using evaluate_controller."""
+        from controller import GreedySpaceController, RandomController
+        from trainer import evaluate_controller
 
-        # vs greedy
-        stats_greedy = run_match(rl_wrapper, greedy_wrapper, envs=1024,
-                                 width=self.width, height=self.height, seed=self.seed)
-        # vs random
-        stats_random = run_match(rl_wrapper, random_wrapper, envs=1024,
-                                 width=self.width, height=self.height, seed=self.seed+1)
+        # Wrapper that uses the already loaded PPO model for player 0
+        class LoadedRLWrapper:
+            def __init__(self, model, player_id=0):
+                self.model = model
+                self.player_id = player_id
+
+            def actions(self, model_env):
+                envs, players = model_env.envs, model_env.players
+                obs = model_env.observe_lite()
+                acts = np.zeros((envs, players), dtype=np.int8)
+                for e in range(envs):
+                    action, _ = self.model.predict(obs[e, self.player_id], deterministic=True)
+                    acts[e, self.player_id] = action
+                return acts
+
+        rl_agent = LoadedRLWrapper(self.model, player_id=0)
+
+        # Greedy opponent (controls player 1)
+        greedy_opponent = GreedySpaceController()
+        # Random opponent
+        random_opponent = RandomController(seed=self.seed + 1)
+
+        # Evaluate vs greedy: RL controls player 0, greedy controls player 1
+        greedy_res = evaluate_controller(
+            [rl_agent, greedy_opponent],
+            envs=1024, width=self.width, height=self.height,
+            players=self.players, seed=self.seed
+        )
+        # Evaluate vs random
+        random_res = evaluate_controller(
+            [rl_agent, random_opponent],
+            envs=1024, width=self.width, height=self.height,
+            players=self.players, seed=self.seed + 1
+        )
+
         return {
-            "winrate_vs_greedy": stats_greedy["win_rate_0"],
-            "winrate_vs_random": stats_random["win_rate_0"],
-            "avg_survival_vs_greedy": stats_greedy["avg_survival_0"],
-            "avg_survival_vs_random": stats_random["avg_survival_0"],
+            "winrate_vs_greedy": float(greedy_res["win_rate_per_player"][0]),  # player 0 win rate
+            "winrate_vs_random": float(random_res["win_rate_per_player"][0]),
+            "avg_survival_vs_greedy": float(greedy_res["mean_length"]),
+            "avg_survival_vs_random": float(random_res["mean_length"]),
+        }
+
+        return {
+            "winrate_vs_greedy": float(greedy_res["win_rate_per_player"].mean()),
+            "winrate_vs_random": float(random_res["win_rate_per_player"].mean()),
+            "avg_survival_vs_greedy": float(greedy_res["mean_length"]),
+            "avg_survival_vs_random": float(random_res["mean_length"]),
         }
 
     def train(self, total_timesteps: int = 0):
