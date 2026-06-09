@@ -121,12 +121,11 @@ class ContinuousGATrainer:
         )
         print(f"Saved GA checkpoint: {checkpoint_path}")
 
-        # Save best genome with evaluation stats
         if self.best_genome is not None:
-            # Evaluate best genome against greedy and random
             eval_results = self._evaluate_and_log(self.best_genome)
+            # Convert numpy types to Python native
+            eval_results = {k: float(v) for k, v in eval_results.items()}
 
-            # Use export_genome to save the genome file and base metadata
             genome_path, meta_path = export_genome(
                 self.best_genome,
                 obs_dim=self.obs_dim,
@@ -143,16 +142,12 @@ class ContinuousGATrainer:
                 out_dir=self.output_dir / "genomes",
             )
 
-            # Augment metadata with training time and win rates
             with open(meta_path, "r") as f:
                 meta = json.load(f)
             meta.update({
-                "training_duration_seconds": time.time() - self.start_time,
-                "generation": self.generation,
-                "winrate_vs_greedy": eval_results["winrate_vs_greedy"],
-                "winrate_vs_random": eval_results["winrate_vs_random"],
-                "mean_length_vs_greedy": eval_results["mean_length_vs_greedy"],
-                "mean_length_vs_random": eval_results["mean_length_vs_random"],
+                "training_duration_seconds": float(time.time() - self.start_time),
+                "generation": int(self.generation),
+                **eval_results,
             })
             with open(meta_path, "w") as f:
                 json.dump(meta, f, indent=2)
