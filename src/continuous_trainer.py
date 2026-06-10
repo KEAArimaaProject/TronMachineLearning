@@ -21,9 +21,10 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
 
 from model import TronBatchModel
-from controller import GreedySpaceController, RandomController
+from controller import GreedySpaceController, RandomController, FastGreedyController
 from trainer import MLPPolicy, evaluate_controller, calculate_fitness, export_genome
 from reinforcement import TronSingleAgentEnv
+from rl_ga_bridge import load_genome_from_ppo, create_population_from_base
 
 
 # ----------------------------------------------------------------------
@@ -39,13 +40,27 @@ def make_child(parent_a: np.ndarray, parent_b: np.ndarray, rng: np.random.Genera
     return child.astype(np.float32)
 
 
-def evaluate_genome(genome: np.ndarray, obs_dim: int, hidden: int,
-                    envs: int, width: int, height: int, players: int, seed: int) -> float:
-    """Fitness: combination of win rate and survival length."""
+def evaluate_genome(genome, obs_dim, *, hidden, envs, width, height, players, seed, opponent= None):
+    """Evaluate genome vs greedy opponent (player 0 = genome, player 1 = greedy)."""
     policy = MLPPolicy(obs_dim, hidden=hidden, genome=genome)
-    scores = evaluate_controller(policy, envs=envs, width=width, height=height,
-                                 players=players, seed=seed)
-    return calculate_fitness(scores["win_rate_per_player"].mean(), scores["mean_length"])
+
+    if opponent:
+        opponent_controller = opponent
+    else:
+        opponent_controller = FastGreedyController()
+
+    scores = evaluate_controller(
+        [policy, opponent_controller],
+        envs=envs,
+        width=width,
+        height=height,
+        players=players,
+        seed=seed)
+    # Fitness based on player 0's win rate and mean length
+    winrate = scores["win_rate_per_player"][0]  # player 0's win rate
+    mean_length = scores["mean_length"]
+    return calculate_fitness(winrate, mean_length)
+
 
 
 class ContinuousGATrainer:
@@ -54,7 +69,9 @@ class ContinuousGATrainer:
     """
     def __init__(self, output_dir: Path, hidden: int, pop_size: int, elite_count: int,
                  eval_envs: int, width: int, height: int, players: int,
-                 checkpoint_steps: int, seed: int = 42):
+                 checkpoint_steps: int, seed: int = 42,
+                 init_from_ppo: bool = False, ppo_checkpoint: Optional[Path] = None,
+                 ppo_noise_std: float = 0.02):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.checkpoint_dir = self.output_dir / "checkpoints_ga"
@@ -69,6 +86,9 @@ class ContinuousGATrainer:
         self.players = players
         self.checkpoint_steps = checkpoint_steps
         self.seed = seed
+        self.init_from_ppo = init_from_ppo
+        self.ppo_checkpoint = Path(ppo_checkpoint) if ppo_checkpoint else None
+        self.ppo_noise_std = float(ppo_noise_std)
 
         # Determine observation dimension
         probe = TronBatchModel(width=width, height=height, players=players, envs=1)
@@ -83,6 +103,11 @@ class ContinuousGATrainer:
         self.best_genome = None
         self.start_time = time.time()
         self.running = True
+
+        self.template_env = TronBatchModel(
+            width=width, height=height, players=players,
+            envs=eval_envs, keep_owner=False, seed=seed
+        )
 
         signal.signal(signal.SIGINT, self._signal_handler)
 
@@ -153,24 +178,27 @@ class ContinuousGATrainer:
                 json.dump(meta, f, indent=2)
 
     def _evaluate_and_log(self, genome: np.ndarray) -> Dict[str, float]:
-        """Run baseline evaluation (vs greedy/random) for logging."""
+        """Evaluate genome vs greedy and random opponents (player 0 = genome, player 1 = opponent)."""
         policy = MLPPolicy(self.obs_dim, hidden=self.hidden, genome=genome)
+        greedy = GreedySpaceController()
+        random_opp = RandomController(seed=self.seed + 1)
 
         # vs greedy
-        greedy_scores = evaluate_controller(
-            policy, envs=1024, width=self.width, height=self.height,
+        greedy_res = evaluate_controller(
+            [policy, greedy], inited_env=self.template_env, envs=1024, width=self.width, height=self.height,
             players=self.players, seed=self.seed
         )
         # vs random
-        random_scores = evaluate_controller(
-            policy, envs=1024, width=self.width, height=self.height,
-            players=self.players, seed=self.seed+1
+        random_res = evaluate_controller(
+            [policy, random_opp], envs=1024, width=self.width, height=self.height,
+            players=self.players, seed=self.seed + 1
         )
+
         return {
-            "winrate_vs_greedy": greedy_scores["win_rate_per_player"].mean(),
-            "winrate_vs_random": random_scores["win_rate_per_player"].mean(),
-            "mean_length_vs_greedy": greedy_scores["mean_length"],
-            "mean_length_vs_random": random_scores["mean_length"],
+            "winrate_vs_greedy": float(greedy_res["win_rate_per_player"][0]),
+            "winrate_vs_random": float(random_res["win_rate_per_player"][0]),
+            "mean_length_vs_greedy": float(greedy_res["mean_length"]),
+            "mean_length_vs_random": float(random_res["mean_length"]),
         }
 
     def train(self, total_generations: int = 0):
@@ -179,14 +207,30 @@ class ContinuousGATrainer:
         """
         if not self._load_latest_checkpoint():
             # Initialize new population
-            self.population = self.rng.normal(0, 0.2, size=(self.pop_size, self.n_params)).astype(np.float32)
+            if self.init_from_ppo and self.ppo_checkpoint is not None:
+                try:
+                    base_genome = load_genome_from_ppo(str(self.ppo_checkpoint), obs_dim=self.obs_dim, hidden=self.hidden)
+                    self.population = create_population_from_base(base_genome, self.pop_size, self.rng, noise_std=self.ppo_noise_std)
+                except Exception as e:
+                    print(f"Failed to initialize population from PPO checkpoint: {e}; falling back to random init")
+                    self.population = self.rng.normal(0, 0.2, size=(self.pop_size, self.n_params)).astype(np.float32)
+            else:
+                self.population = self.rng.normal(0, 0.2, size=(self.pop_size, self.n_params)).astype(np.float32)
             self.generation = 0
 
         while self.running:
             # Evaluate fitness
             fitness = np.array([
-                evaluate_genome(g, self.obs_dim, self.hidden, self.eval_envs,
-                                self.width, self.height, self.players, self.seed + self.generation)
+                evaluate_genome(
+                    g,
+                    self.obs_dim,
+                    hidden=self.hidden,
+                    envs=self.eval_envs,
+                    width=self.width,
+                    height=self.height,
+                    players=self.players,
+                    seed=self.seed + self.generation,
+                )
                 for g in self.population
             ])
 
@@ -454,6 +498,11 @@ def main():
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--n_epochs", type=int, default=10)
 
+    # Optional: initialize GA population from a PPO checkpoint
+    parser.add_argument("--init_from_ppo", action="store_true", help="Initialize GA population from PPO checkpoint")
+    parser.add_argument("--ppo_checkpoint", type=str, default="", help="Path to PPO .zip checkpoint to initialize GA population")
+    parser.add_argument("--ppo_noise_std", type=float, default=0.02, help="Std dev of gaussian noise added to PPO base genome when creating population")
+
     args = parser.parse_args()
 
     # Create a unique run directory
@@ -477,6 +526,9 @@ def main():
             players=args.players,
             checkpoint_steps=args.checkpoint_steps,
             seed=args.seed,
+            init_from_ppo=args.init_from_ppo,
+            ppo_checkpoint=Path(args.ppo_checkpoint) if args.ppo_checkpoint else None,
+            ppo_noise_std=args.ppo_noise_std,
         )
         trainer.train(total_generations=args.total_generations)
 

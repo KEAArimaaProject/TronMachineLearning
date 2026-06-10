@@ -77,15 +77,19 @@ def evaluate_genome(genome, obs_dim, *, hidden, envs, seed):
     return calculate_fitness(scores["win_rate_per_player"].mean(), scores["mean_length"])
 
 
-def evaluate_controller(controller, *, envs=4096, width=32, height=32, players=2, max_ticks=512, seed=0):
-    env = TronBatchModel(
-        width=width,
-        height=height,
-        players=players,
-        envs=envs,
-        keep_owner=False,
-        seed=seed,
-    )
+def evaluate_controller(controller,  *,
+                        envs, width, height, players, inited_env = None, max_ticks=512, seed=0):
+    if inited_env:
+        env = inited_env
+    else:
+        env = TronBatchModel(
+            width=width,
+            height=height,
+            players=players,
+            envs=envs,
+            keep_owner=False,
+            seed=seed,
+        )
 
     total_reward = np.zeros((envs, players), dtype=np.float32)
     wins = np.zeros((envs, players), dtype=np.float32)

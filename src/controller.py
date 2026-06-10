@@ -72,6 +72,12 @@ class GreedySpaceController:
                 break
         return score
 
+class FastGreedyController:
+    """Chooses action with longest ray distance using precomputed environment features."""
+    def actions(self, model):
+        # observe_lite returns (envs, players, 3) distances as first 3 features
+        dist = model.observe_lite()[..., :3]   # shape (envs, players, 3)
+        return dist.argmax(axis=-1).astype(np.int8)
 
 class KeyStateController:
     """
