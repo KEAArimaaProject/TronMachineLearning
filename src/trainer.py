@@ -286,6 +286,24 @@ class MLPPolicy:
 
         self.b2 = genome[i:i+3]
 
+    def sample_actions(self, model, temperature=1.0):
+        """Return stochastic actions [envs, players] sampled from softmax(logits/temp)."""
+        observations = model.observe_lite()
+        logits = self.logits(observations)  # (envs, players, 3)
+        if temperature <= 0:
+            return logits.argmax(axis=-1).astype(np.int8)
+        # Softmax with temperature
+        logits = logits / temperature
+        # Subtract max for numerical stability
+        logits = logits - logits.max(axis=-1, keepdims=True)
+        exp = np.exp(logits)
+        probs = exp / exp.sum(axis=-1, keepdims=True)
+        # Sample categorical actions
+        actions = np.apply_along_axis(
+            lambda p: self.rng.choice(3, p=p), -1, probs.reshape(-1, 3)
+        ).reshape(probs.shape[:-1])
+        return actions.astype(np.int8)
+
     def set_genome(self, genome):
         genome = np.asarray(genome, dtype=np.float32)
         self.genome = genome

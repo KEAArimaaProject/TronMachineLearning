@@ -27,6 +27,14 @@ from reinforcement import TronSingleAgentEnv
 from rl_ga_bridge import load_genome_from_ppo, create_population_from_base
 
 
+class SamplingPolicy:
+    def __init__(self, policy, temperature):
+        self.policy = policy
+        self.temp = temperature
+    def actions(self, model):
+        return self.policy.sample_actions(model, self.temp)
+
+
 # ----------------------------------------------------------------------
 # GA specific helpers
 # ----------------------------------------------------------------------
@@ -40,24 +48,21 @@ def make_child(parent_a: np.ndarray, parent_b: np.ndarray, rng: np.random.Genera
     return child.astype(np.float32)
 
 
-def evaluate_genome(genome, obs_dim, *, hidden, envs, width, height, players, seed, opponent= None):
-    """Evaluate genome vs greedy opponent (player 0 = genome, player 1 = greedy)."""
+def evaluate_genome(genome, obs_dim, *, hidden, envs, width, height, players, seed):
     policy = MLPPolicy(obs_dim, hidden=hidden, genome=genome)
+    greedy = GreedySpaceController()
 
-    if opponent:
-        opponent_controller = opponent
-    else:
-        opponent_controller = FastGreedyController()
+    if np.random.rand() < 0.01:  # 1% of evaluations
+        test_env = TronBatchModel(width=width, height=height, players=players, envs=32, seed=seed)
+        acts = policy.sample_actions(test_env, temperature=0.5)
+        print(f"Action counts: {np.bincount(acts.ravel(), minlength=3)}")
 
     scores = evaluate_controller(
-        [policy, opponent_controller],
-        envs=envs,
-        width=width,
-        height=height,
-        players=players,
-        seed=seed)
-    # Fitness based on player 0's win rate and mean length
-    winrate = scores["win_rate_per_player"][0]  # player 0's win rate
+        [policy, greedy],
+        envs=envs, width=width, height=height, players=players, seed=seed
+    )
+
+    winrate = scores["win_rate_per_player"][0]
     mean_length = scores["mean_length"]
     return calculate_fitness(winrate, mean_length)
 
@@ -185,12 +190,12 @@ class ContinuousGATrainer:
 
         # vs greedy
         greedy_res = evaluate_controller(
-            [policy, greedy], inited_env=self.template_env, envs=1024, width=self.width, height=self.height,
+            [policy, greedy], inited_env=self.template_env, envs=self.eval_envs, width=self.width, height=self.height,
             players=self.players, seed=self.seed
         )
         # vs random
         random_res = evaluate_controller(
-            [policy, random_opp], envs=1024, width=self.width, height=self.height,
+            [policy, random_opp], envs=self.eval_envs, width=self.width, height=self.height,
             players=self.players, seed=self.seed + 1
         )
 
@@ -480,8 +485,8 @@ def main():
                         help="RL: max timesteps (0=infinite)")
 
     # Environment parameters
-    parser.add_argument("--width", type=int, default=48)
-    parser.add_argument("--height", type=int, default=32)
+    parser.add_argument("--width", type=int, default=64)
+    parser.add_argument("--height", type=int, default=48)
     parser.add_argument("--players", type=int, default=2, choices=[2,3,4])
     parser.add_argument("--seed", type=int, default=42)
 

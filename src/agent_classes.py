@@ -55,6 +55,17 @@ class MLPPolicy:
 
         self.b2 = genome[i:i+3]
 
+    def sample_actions(self, model, temperature=0.5):
+        observations = model.observe_lite()
+        logits = self.logits(observations)  # (envs, players, 3)
+        probs = np.exp(logits / temperature)
+        probs /= probs.sum(axis=-1, keepdims=True)
+        # Sample action for each env and player
+        actions = np.apply_along_axis(
+            lambda p: np.random.choice(3, p=p), -1, probs
+        ).astype(np.int8)
+        return actions
+
     def set_genome(self, genome):
         genome = np.asarray(genome, dtype=np.float32)
         self.genome = genome

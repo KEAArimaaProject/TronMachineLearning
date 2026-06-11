@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Export training metrics (time vs winrate vs greedy) to CSV for Google Sheets.
+Export training metrics (time vs winrate vs random) to CSV for Google Sheets.
 Usage:
     python export_metrics_to_csv.py --run_dir training_runs/ga_run_20260109_120000 --output metrics.csv
     python export_metrics_to_csv.py --run_dir training_runs/rl_run_20260109_120000 --output metrics.csv
@@ -15,22 +15,22 @@ from datetime import datetime
 from typing import List, Dict, Tuple
 
 def extract_ga_metrics(genome_json_path: Path) -> Tuple[float, float]:
-    """Extract training_duration_seconds and winrate_vs_greedy from GA genome JSON."""
+    """Extract training_duration_seconds and winrate_vs_random from GA genome JSON."""
     with open(genome_json_path, 'r') as f:
         data = json.load(f)
     duration = data.get("training_duration_seconds", 0.0)
-    winrate = data.get("winrate_vs_greedy", None)
+    winrate = data.get("winrate_vs_random", None)
     if winrate is None:
         # fallback to fitness if winrate missing
         winrate = data.get("fitness", 0.0)
     return float(duration), float(winrate)
 
 def extract_rl_metrics(checkpoint_json_path: Path) -> Tuple[float, float]:
-    """Extract training_duration_seconds and winrate_vs_greedy from RL checkpoint JSON."""
+    """Extract training_duration_seconds and winrate_vs_random from RL checkpoint JSON."""
     with open(checkpoint_json_path, 'r') as f:
         data = json.load(f)
     duration = data.get("training_duration_seconds", 0.0)
-    winrate = data.get("winrate_vs_greedy", None)
+    winrate = data.get("winrate_vs_random", None)
     if winrate is None:
         winrate = 0.0
     return float(duration), float(winrate)
@@ -47,7 +47,7 @@ def collect_ga_run(run_dir: Path) -> List[Dict]:
         duration, winrate = extract_ga_metrics(json_file)
         points.append({
             "duration_seconds": duration,
-            "winrate_vs_greedy": winrate,
+            "winrate_vs_random": winrate,
             "source": json_file.name,
             "type": "GA"
         })
@@ -64,7 +64,7 @@ def collect_rl_run(run_dir: Path) -> List[Dict]:
         duration, winrate = extract_rl_metrics(json_file)
         points.append({
             "duration_seconds": duration,
-            "winrate_vs_greedy": winrate,
+            "winrate_vs_random": winrate,
             "source": json_file.name,
             "type": "RL"
         })
@@ -100,7 +100,7 @@ def write_csv(points: List[Dict], output_path: Path):
         print("No data points found. Exiting.")
         return
     with open(output_path, 'w', newline='') as csvfile:
-        fieldnames = ["duration_seconds", "winrate_vs_greedy", "type", "run", "source"]
+        fieldnames = ["duration_seconds", "winrate_vs_random", "type", "run", "source"]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         for p in points:
