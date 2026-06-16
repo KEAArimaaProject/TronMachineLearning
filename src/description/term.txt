@@ -55,3 +55,47 @@ This document explains the Machine Learning and Statistics terms used in this pr
 *   **Softmax / Logits**: The raw scores output by the neural network (logits) are converted into probabilities (softmax) to decide which action to take.
 *   **Temperature**: A parameter used during sampling; higher temperature makes the AI more "creative" (random), while lower temperature makes it more "focused" (deterministic).
 *   **Vectorization (Engine)**: The use of low-level optimizations (like Numba JIT) and array-based math (NumPy) to simulate thousands of game steps per second on the CPU.
+
+
+
+
+
+----------------------------------------------------
+----------------------------------------------------
+
+
+
+
+#### 5. Tutorial: Reinforcement Learning with PPO in Tron
+
+This tutorial explains how we use **Proximal Policy Optimization (PPO)** to train our Tron agents.
+
+**1. The Goal: Maximizing Rewards**
+In Reinforcement Learning, the agent learns by trial and error. Its goal is to maximize the **Reward Signal**.
+*   **Winning**: The agent receives `+1.0` if it is the last one alive.
+*   **Losing**: The agent receives `-1.0` if it crashes into a wall or a trail.
+*   **Survival**: Each step taken without dying counts towards its overall performance, though the primary reward is terminal.
+
+**2. The Environment (Gymnasium Wrapper)**
+We use the `TronSingleAgentEnv` (in `src/reinforcement.py`) to bridge our fast game engine with the RL library. 
+*   It presents the game as a standard loop: **Observe** -> **Act** -> **Reward** -> **Repeat**.
+*   The agent only controls one player; the other players are controlled by a fixed **Opponent Policy** (like the "Greedy" controller) to provide a consistent challenge.
+
+**3. How PPO Learns**
+PPO is an "Actor-Critic" method, meaning it maintains two internal models:
+*   **The Actor (Policy)**: Decides which move to make (Straight, Left, Right) based on the current distances and player positions.
+*   **The Critic (Value Function)**: Estimates how much reward the agent is likely to get from the current position. 
+
+During training, the agent plays many games (called **Rollouts**). It compares the actual rewards it received with what the Critic predicted.
+*   If the agent did better than expected, PPO adjusts the Actor's weights to make those actions **more likely** in the future.
+*   If it did worse, it makes those actions **less likely**.
+
+**4. Why "Proximal" Optimization?**
+The "Proximal" part is PPO's secret sauce. In older RL methods, one bad batch of data could completely ruin a policy by making massive, destructive updates. PPO uses a **Clipped Objective**: it limits how much the policy can change in a single update. This ensures training remains stable and the agent doesn't "forget" everything it learned in a single bad generation.
+
+**5. Training Workflow**
+We run PPO using `src/continuous_trainer.py`. The process looks like this:
+1.  **Collection**: The agent plays games for a set number of steps (`n_steps`, usually 2048) and stores the data.
+2.  **Optimization**: The gathered data is used to update the neural network over several **Epochs**.
+3.  **Check-pointing**: Every few thousand steps, the model is saved and evaluated against the Greedy baseline to track progress.
+4.  **Iteration**: This cycle repeats indefinitely, gradually refining the agent from random moves to expert-level navigation.
