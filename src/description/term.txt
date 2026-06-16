@@ -95,7 +95,19 @@ The "Proximal" part is PPO's secret sauce. In older RL methods, one bad batch of
 
 **5. Training Workflow**
 We run PPO using `src/continuous_trainer.py`. The process looks like this:
-1.  **Collection**: The agent plays games for a set number of steps (`n_steps`, usually 2048) and stores the data.
+1.  **Collection**: The agent plays games for a set number of **Steps** (`n_steps`, usually 2048) and stores the data. A "step" is a single action taken by the agent in the game (one tick of the clock).
 2.  **Optimization**: The gathered data is used to update the neural network over several **Epochs**.
-3.  **Check-pointing**: Every few thousand steps, the model is saved and evaluated against the Greedy baseline to track progress.
+3.  **Check-pointing**: Every few thousand steps (total **Timesteps**), the model is saved and evaluated against the Greedy baseline to track progress.
 4.  **Iteration**: This cycle repeats indefinitely, gradually refining the agent from random moves to expert-level navigation.
+
+------------------------------------------
+------------------------------------------
+
+#### 6. Clarifying "Steps" and "Timesteps"
+
+In the context of our training logs and code, you will see several terms related to time:
+
+*   **Game Step (Tick)**: A single moment in a Tron game where every player moves forward one square.
+*   **n_steps (Collection Window)**: The number of game steps the agent takes to gather experience *before* it stops to learn. If `n_steps` is 2048, the agent "remembers" 2048 moves and their outcomes before updating its brain.
+*   **Total Timesteps**: The running total of all game steps taken across the entire training history. This is the primary measure of how much "experience" the agent has. If a model is saved at "1,000,000 timesteps," it means it has seen one million individual moves.
+*   **Checkpoint Steps**: A configuration setting (e.g., 50,000) that tells the trainer how often to save the model and run an evaluation.
