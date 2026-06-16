@@ -1,0 +1,53 @@
+### Project Overview: Training Two AI Approaches for Tron
+
+This project implements two distinct machine learning paradigms to train agents for the game of Tron: **Genetic Algorithms (GA)** and **Reinforcement Learning (RL)**. Both approaches share a common neural network architecture and a highly optimized vectorized game engine.
+
+---
+
+### 1. Core Architecture: MLPPolicy & Observations
+
+Both AI models use a Multi-Layer Perceptron (MLP) defined in `src/trainer.py` as `MLPPolicy`.
+- **Input (Observation Space):** The "lite" observation mode (`observe_lite` in `src/model.py`) provides:
+    - **Ray-casted distances (3 features):** Normalized distance to the nearest obstacle (wall or trail) in front, to the left, and to the right.
+    - **Self-state (7 features):** Normalized X/Y coordinates, one-hot encoded heading (4 directions), and alive status.
+    - **Opponent-state (7 features per opponent):** Relative X/Y, alive status, and heading.
+- **Output (Action Space):** 3 discrete actions: `0` (Straight), `1` (Turn Left), `2` (Turn Right).
+- **Network Structure:** Typically a small hidden layer (e.g., 16-64 neurons) to keep the model fast enough for massive batch processing.
+
+---
+
+### 2. Genetic Algorithm (GA) Training
+
+The GA approach (implemented in `src/continuous_trainer.py` via `ContinuousGATrainer`) evolves a population of "genomes" (the weights and biases of the neural network).
+
+- **Population:** A set of individuals, each representing a full set of neural network parameters.
+- **Evaluation (Fitness):** Each individual is evaluated by playing a large batch of games (e.g., 1024 environments) against a scripted `GreedySpaceController` (which simply chooses the path with the most immediate space).
+    - **Fitness Function:** `fitness = win_rate + (mean_game_length / max_steps)`. This rewards winning first, but also encourages survival time even in losing scenarios.
+- **Evolutionary Cycle:**
+    1. **Selection:** The top individuals (elites) are kept.
+    2. **Crossover:** New children are created by randomly mixing parameters from two elite parents.
+    3. **Mutation:** Small random noise is added to a percentage of the child's parameters to explore new behaviors.
+- **Optimization:** The game engine is vectorized using NumPy and Numba, allowing thousands of games to be simulated in parallel on the CPU.
+
+---
+
+### 3. Reinforcement Learning (RL) Training
+
+The RL approach (implemented in `src/continuous_trainer.py` via `ContinuousRLTrainer`) uses the **Proximal Policy Optimization (PPO)** algorithm from the `stable-baselines3` library.
+
+- **Environment Wrapper:** `TronSingleAgentEnv` (in `src/reinforcement.py`) wraps the vectorized engine into a standard Gymnasium interface. It focuses on training one agent while the other players are controlled by a fixed opponent (e.g., "greedy" or "random").
+- **Rewards:**
+    - `-1.0` for dying (hitting a wall or trail).
+    - `+1.0` for being the last survivor (winning).
+    - `0.0` for surviving a step.
+- **Learning Process:** The PPO agent interacts with the environment, collects trajectories, and updates its policy using a gradient-based approach to maximize expected cumulative reward. It maintains both a "Policy" (how to act) and a "Value" function (estimating how good a state is).
+
+---
+
+### 4. Synergy and Comparison
+
+- **Initialization:** Interestingly, the GA can be initialized from a pre-trained RL model (`init_from_ppo` flag). This allows the GA to start from a competent baseline and further refine it through evolutionary search.
+- **GA vs. RL:**
+    - **GA** is excellent at global search and doesn't require a differentiable reward function, but it can be slower to converge on fine-tuned behaviors.
+    - **RL (PPO)** is very efficient at credit assignment and learning complex sequences of actions, but can get stuck in local optima if the reward signal is sparse.
+- **Continuous Training:** `src/continuous_trainer.py` provides an "indefinite" training mode for both, with periodic checkpoints and performance logging to `metrics.csv`.
