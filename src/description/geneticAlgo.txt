@@ -1,0 +1,27 @@
+### Genetic Algorithm (GA) Configuration
+
+The Genetic Algorithm evolves a population of neural networks by simulating games and selecting the best performers. Its configuration is located in `src/continuous_trainer.py` (`ContinuousGATrainer`) and `src/trainer.py`.
+
+#### 1. Population & Evolution Parameters
+- **Population Size (`pop_size`)**: `64` (default in CLI examples). The number of unique "genomes" in each generation.
+- **Elite Count (`elite_count`)**: `8` (default in CLI examples). The number of top-performing individuals kept for the next generation.
+- **Mutation Rate**: `0.05` (5%). The probability that a specific parameter (weight/bias) will be mutated.
+- **Mutation Strength (`mutation_std`)**: `0.03`. The standard deviation of the random noise added during mutation.
+- **Crossover**: 50/50 uniform crossover (each parameter has a 50% chance to come from either parent).
+
+#### 2. Neural Network (MLPPolicy)
+- **Hidden Layers**: Single hidden layer.
+- **Hidden Neurons (`hidden`)**: Configurable (typically `16`, `24`, or `48` based on CLI examples).
+- **Activation Function**: `Tanh` (applied at the hidden layer).
+- **Initialization**: Random normal distribution with a standard deviation of `0.2` (or initialized from a PPO model).
+
+#### 3. Evaluation & Fitness
+- **Evaluation Environments (`eval_envs`)**: `1024` (default). Each genome plays 1024 parallel games to determine its fitness.
+- **Opponent**: `GreedySpaceController` (baseline script).
+- **Fitness Function**: `0.25 * winrate + 0.001 * mean_length`.
+  - Prioritizes winning (winrate is between 0 and 1).
+  - Secondary goal is survival time (encourages learning even before the agent is good enough to win).
+
+#### 4. Training Workflow
+- **Checkpointing**: Every `10` generations (set via `--checkpoint_steps`).
+- **Persistence**: Saved as `.npz` files (full population) and `.npy`/`.json` (best individual).

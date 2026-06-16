@@ -1,0 +1,29 @@
+### Reinforcement Learning (PPO) Configuration
+
+The Reinforcement Learning AI uses the **Proximal Policy Optimization (PPO)** algorithm from the `stable-baselines3` library. Its configuration is primarily managed in `src/continuous_trainer.py` within the `ContinuousRLTrainer` class.
+
+#### 1. Model Hyperparameters (PPO)
+These settings control how the neural network updates its weights:
+
+- **Learning Rate (`learning_rate`)**: `3e-4` (0.0003). Determines the size of the steps taken during gradient descent.
+- **Buffer Size (`n_steps`)**: `2048`. The number of steps to run in each environment per update (Total batch size = `n_steps` * `n_envs`).
+- **Batch Size (`batch_size`)**: `64`. The number of samples used in each gradient update.
+- **Optimization Epochs (`n_epochs`)**: `10`. The number of times the optimizer passes through the collected data.
+- **GAE Lambda (`gae_lambda`)**: `0.95`. Factor for trade-off of bias vs variance for Generalized Advantage Estimator.
+- **Clip Range (`clip_range`)**: `0.2`. Limits how much the policy can change in one step to ensure stability.
+- **Entropy Coefficient (`ent_coef`)**: `0.01`. Encourages exploration by rewarding "unpredictable" actions.
+- **Value Function Coefficient (`vf_coef`)**: `0.5`. Determines the importance of the Critic's loss in the total loss function.
+- **Max Gradient Norm (`max_grad_norm`)**: `0.5`. Clips gradients to prevent them from "exploding."
+
+#### 2. Network Architecture
+- **Net Architecture (`net_arch`)**: `[256, 256]`. The agent uses two hidden layers, each with 256 neurons.
+- **Activation Function**: Typically `Tanh` (default in Stable Baselines 3 PPO).
+
+#### 3. Environment & Training Setup
+- **Opponent Policy**: Usually set to `"greedy"` or `"random"`.
+- **Observation Space**: `"lite"` mode (Ray-casted distances, relative positions, headings).
+- **Reward Structure**: 
+  - Winning: `+1.0`
+  - Losing: `-1.0`
+  - Step Survival: `0.0`
+- **Checkpointing**: Every `50,000` timesteps by default (set via `--checkpoint_steps`).
