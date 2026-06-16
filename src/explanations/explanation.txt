@@ -6,47 +6,48 @@ This project implements two distinct machine learning paradigms to train agents 
 
 ### 1. Core Architecture: MLPPolicy & Observations
 
-Both AI models use a Multi-Layer Perceptron (MLP) defined in `src/trainer.py` as `MLPPolicy`.
-- **Input (Observation Space):** The "lite" observation mode (`observe_lite` in `src/model.py`) provides:
-    - **Ray-casted distances (3 features):** Normalized distance to the nearest obstacle (wall or trail) in front, to the left, and to the right.
+Both AI models use a Multi-Layer Perceptron (MLP) defined in `src/trainer.py` as `MLPPolicy` -----(see lines 255-323).
+- **Input (Observation Space):** The "lite" observation mode (`observe_lite` in `src/model.py`, -----lines 307-400) provides:
+    - **Ray-casted distances (3 features):** Normalized distance to the nearest obstacle (wall or trail) in front, to the left, and to the right -----(implemented via ray marching in `observe_lite`).
     - **Self-state (7 features):** Normalized X/Y coordinates, one-hot encoded heading (4 directions), and alive status.
     - **Opponent-state (7 features per opponent):** Relative X/Y, alive status, and heading.
-- **Output (Action Space):** 3 discrete actions: `0` (Straight), `1` (Turn Left), `2` (Turn Right).
+- **Output (Action Space):** 3 discrete actions: `0` (Straight), `1` (Turn Left), `2` (Turn Right). -----These are mapped to heading changes in `src/model.py` (`TURN` array, line 22).
 - **Network Structure:** Typically a small hidden layer (e.g., 16-64 neurons) to keep the model fast enough for massive batch processing.
 
 ---
 
 ### 2. Genetic Algorithm (GA) Training
 
-The GA approach (implemented in `src/continuous_trainer.py` via `ContinuousGATrainer`) evolves a population of "genomes" (the weights and biases of the neural network).
+The GA approach (implemented in `src/continuous_trainer.py` via `ContinuousGATrainer`, -----lines 71-280) evolves a population of "genomes" (the weights and biases of the neural network).
 
-- **Population:** A set of individuals, each representing a full set of neural network parameters.
-- **Evaluation (Fitness):** Each individual is evaluated by playing a large batch of games (e.g., 1024 environments) against a scripted `GreedySpaceController` (which simply chooses the path with the most immediate space).
-    - **Fitness Function:** `fitness = win_rate + (mean_game_length / max_steps)`. This rewards winning first, but also encourages survival time even in losing scenarios.
+- **Population:** A set of individuals, each representing a full set of neural network parameters -----(managed in `ContinuousGATrainer.train`, lines 213-223).
+- **Evaluation (Fitness):** Each individual is evaluated by playing a large batch of games (e.g., 1024 environments) against a scripted `GreedySpaceController` (which simply chooses the path with the most immediate space, -----see `src/controller.py`, lines 39-73).
+    - **Fitness Function:** `fitness = win_rate + (mean_game_length / max_steps)`. This rewards winning first, but also encourages survival time even in losing scenarios -----(defined in `src/trainer.py` as `calculate_fitness`, lines 248-249).
 - **Evolutionary Cycle:**
-    1. **Selection:** The top individuals (elites) are kept.
-    2. **Crossover:** New children are created by randomly mixing parameters from two elite parents.
-    3. **Mutation:** Small random noise is added to a percentage of the child's parameters to explore new behaviors.
-- **Optimization:** The game engine is vectorized using NumPy and Numba, allowing thousands of games to be simulated in parallel on the CPU.
+    1. **Selection:** The top individuals (elites) are kept -----(lines 261-262 in `src/continuous_trainer.py`).
+    2. **Crossover:** New children are created by randomly mixing parameters from two elite parents -----(`make_child` function in `src/continuous_trainer.py`, lines 41-48).
+    3. **Mutation:** Small random noise is added to a percentage of the child's parameters to explore new behaviors -----(also in `make_child`).
+- **Optimization:** The game engine is vectorized using NumPy and Numba, allowing thousands of games to be simulated in parallel on the CPU -----(`src/model.py`, `TronBatchModel.step`, lines 217-286).
 
 ---
 
 ### 3. Reinforcement Learning (RL) Training
 
-The RL approach (implemented in `src/continuous_trainer.py` via `ContinuousRLTrainer`) uses the **Proximal Policy Optimization (PPO)** algorithm from the `stable-baselines3` library.
+The RL approach (implemented in `src/continuous_trainer.py` via `ContinuousRLTrainer`, -----lines 284-560) uses the **Proximal Policy Optimization (PPO)** algorithm from the `stable-baselines3` library.
 
-- **Environment Wrapper:** `TronSingleAgentEnv` (in `src/reinforcement.py`) wraps the vectorized engine into a standard Gymnasium interface. It focuses on training one agent while the other players are controlled by a fixed opponent (e.g., "greedy" or "random").
+- **Environment Wrapper:** `TronSingleAgentEnv` (in `src/reinforcement.py`,----- lines 50-202) wraps the vectorized engine into a standard Gymnasium interface. It focuses on training one agent while the other players are controlled by a fixed opponent (e.g., "greedy" or "random").
 - **Rewards:**
     - `-1.0` for dying (hitting a wall or trail).
     - `+1.0` for being the last survivor (winning).
     - `0.0` for surviving a step.
+    -----(See `src/model.py`, `TronBatchModel.step`, lines 262 and 283 for reward assignment logic).
 - **Learning Process:** The PPO agent interacts with the environment, collects trajectories, and updates its policy using a gradient-based approach to maximize expected cumulative reward. It maintains both a "Policy" (how to act) and a "Value" function (estimating how good a state is).
 
 ---
 
 ### 4. Synergy and Comparison
 
-- **Initialization:** Interestingly, the GA can be initialized from a pre-trained RL model (`init_from_ppo` flag). This allows the GA to start from a competent baseline and further refine it through evolutionary search.
+- **Initialization:** Interestingly, the GA can be initialized from a pre-trained RL model (`init_from_ppo` flag). This allows the GA to start from a competent baseline and further refine it through evolutionary search -----(implemented in `src/rl_ga_bridge.py` and used in `ContinuousGATrainer.train`, lines 215-218).
 - **GA vs. RL:**
     - **GA** is excellent at global search and doesn't require a differentiable reward function, but it can be slower to converge on fine-tuned behaviors.
     - **RL (PPO)** is very efficient at credit assignment and learning complex sequences of actions, but can get stuck in local optima if the reward signal is sparse.
