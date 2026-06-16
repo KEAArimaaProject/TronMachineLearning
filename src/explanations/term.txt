@@ -8,12 +8,16 @@ This document explains the Machine Learning and Statistics terms used in this pr
 
 *   **Machine Learning Paradigms**: Different approaches to how an AI learns. This project uses **Genetic Algorithms** (search-based) and **Reinforcement Learning** (experience-based).
 *   **Neural Network Architecture**: The structural design of the AI's "brain." Here, a **Multi-Layer Perceptron (MLP)** is used.
-*   **Multi-Layer Perceptron (MLP)**: A classic neural network consisting of an input layer, one or more hidden layers, and an output layer. It uses mathematical weights and biases to process information.
+*   **Multi-Layer Perceptron (MLP)**: A classic neural network consisting of an input layer, one or more hidden layers, and an output layer. It uses mathematical weights and biases (parameters) to process information.
+*   **Hidden Layer**: A layer of neurons between the input and output in a neural network that allows the model to learn complex, non-linear patterns.
+*   **Weights and Biases (Parameters)**: The internal numerical values that a neural network "adjusts" during training. Weights determine the strength of connections between neurons, and biases shift the activation.
 *   **Policy**: A strategy or mapping that tells the agent which action to take based on its current observation of the environment.
 *   **Observation Space (Input)**: The specific set of information the AI "sees" at each step (e.g., distances to walls, positions of players).
-*   **Action Space (Output)**: The set of all possible moves the AI can make (e.g., Move Straight, Turn Left, Turn Right).
-*   **One-Hot Encoding**: A method to represent categorical data (like "Heading North") as a binary vector (e.g., `[1, 0, 0, 0]`).
-*   **Normalization**: Scaling numerical values (like coordinates) to a standard range (usually 0 to 1 or -1 to 1) to help the neural network learn more efficiently.
+*   **Ray-casted distances / Ray Marching**: A technique where "rays" are sent out from the agent's position in different directions to calculate the distance to the nearest obstacle (wall or trail).
+*   **Action Space (Output)**: The set of all possible moves the AI can make. This project uses **Discrete Actions** (e.g., Straight, Turn Left, Turn Right).
+*   **One-Hot Encoding**: A method to represent categorical data (like "Heading North") as a binary vector (e.g., `[1, 0, 0, 0]`) so the neural network can process it.
+*   **Normalization**: Scaling numerical values (like coordinates or distances) to a standard range (usually 0 to 1) to ensure the neural network treats different inputs with equal importance.
+*   **Baseline**: A simple model or scripted strategy (like the "Greedy" controller) used as a point of comparison to measure how much the AI has improved.
 *   **Batch Processing / Vectorization**: Running many game environments simultaneously in a single mathematical operation (using NumPy/Numba) to dramatically speed up training.
 
 ---
@@ -40,7 +44,9 @@ This document explains the Machine Learning and Statistics terms used in this pr
 *   **Gradient-Based Optimization**: A mathematical method for updating the neural network's weights by following the "gradient" (direction) that increases the expected reward.
 *   **Value Function**: An internal estimate the RL agent makes about how "good" a current state is (the expected future reward from that point).
 *   **Local Optima**: A situation where the AI finds a "pretty good" strategy but fails to find the "best" strategy because it stops exploring new ideas.
+*   **Sparse Reward Signal**: When an agent receives feedback only rarely (e.g., only at the end of a long game). This makes it harder for RL agents to learn which specific actions were helpful.
 *   **Differentiable Reward Function**: A reward structure that allows for smooth gradient calculations. GA does not require this, making it more flexible for complex fitness metrics.
+*   **Gymnasium**: A standard interface (API) used in Reinforcement Learning to connect AI agents to different environments.
 
 ---
 
