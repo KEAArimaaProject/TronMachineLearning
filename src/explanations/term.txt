@@ -1,0 +1,51 @@
+### Glossary of Technical Terms
+
+This document explains the Machine Learning and Statistics terms used in this project's documentation and code.
+
+---
+
+#### 1. General Machine Learning Concepts
+
+*   **Machine Learning Paradigms**: Different approaches to how an AI learns. This project uses **Genetic Algorithms** (search-based) and **Reinforcement Learning** (experience-based).
+*   **Neural Network Architecture**: The structural design of the AI's "brain." Here, a **Multi-Layer Perceptron (MLP)** is used.
+*   **Multi-Layer Perceptron (MLP)**: A classic neural network consisting of an input layer, one or more hidden layers, and an output layer. It uses mathematical weights and biases to process information.
+*   **Policy**: A strategy or mapping that tells the agent which action to take based on its current observation of the environment.
+*   **Observation Space (Input)**: The specific set of information the AI "sees" at each step (e.g., distances to walls, positions of players).
+*   **Action Space (Output)**: The set of all possible moves the AI can make (e.g., Move Straight, Turn Left, Turn Right).
+*   **One-Hot Encoding**: A method to represent categorical data (like "Heading North") as a binary vector (e.g., `[1, 0, 0, 0]`).
+*   **Normalization**: Scaling numerical values (like coordinates) to a standard range (usually 0 to 1 or -1 to 1) to help the neural network learn more efficiently.
+*   **Batch Processing / Vectorization**: Running many game environments simultaneously in a single mathematical operation (using NumPy/Numba) to dramatically speed up training.
+
+---
+
+#### 2. Genetic Algorithms (GA)
+
+*   **Genome**: A complete set of parameters (weights and biases) for one neural network, represented as a long list of numbers.
+*   **Population**: A group of different genomes being tested and evolved at the same time.
+*   **Generation**: One full cycle of evaluation, selection, and reproduction in the GA.
+*   **Fitness Function**: A formula used to calculate a "score" for each individual based on its performance (e.g., win rate and survival time). It determines which individuals are "fit" enough to reproduce.
+*   **Selection / Elites**: The process of choosing the best-performing individuals (elites) from the current population to pass their "genes" to the next generation.
+*   **Crossover**: Creating a new "child" genome by combining parts of two "parent" genomes.
+*   **Mutation**: Randomly changing a small part of a genome to introduce new behaviors and prevent the population from becoming too similar.
+*   **Global Search**: The ability of GA to explore a wide range of possible solutions across the entire "parameter space" without getting stuck too easily.
+
+---
+
+#### 3. Reinforcement Learning (RL)
+
+*   **Proximal Policy Optimization (PPO)**: A state-of-the-art RL algorithm that balances exploration and exploitation. It is designed to be stable and reliable by preventing the policy from changing too drastically in a single update.
+*   **Reward Signal**: Numerical feedback given to the agent (e.g., +1 for winning, -1 for dying) to guide its learning process.
+*   **Credit Assignment**: The challenge of determining which specific action in a long sequence eventually led to a reward or failure.
+*   **Trajectories / Rollouts**: Sequences of observations, actions, and rewards collected by the agent while playing through games.
+*   **Gradient-Based Optimization**: A mathematical method for updating the neural network's weights by following the "gradient" (direction) that increases the expected reward.
+*   **Value Function**: An internal estimate the RL agent makes about how "good" a current state is (the expected future reward from that point).
+*   **Local Optima**: A situation where the AI finds a "pretty good" strategy but fails to find the "best" strategy because it stops exploring new ideas.
+*   **Differentiable Reward Function**: A reward structure that allows for smooth gradient calculations. GA does not require this, making it more flexible for complex fitness metrics.
+
+---
+
+#### 4. Advanced Concepts
+
+*   **Softmax / Logits**: The raw scores output by the neural network (logits) are converted into probabilities (softmax) to decide which action to take.
+*   **Temperature**: A parameter used during sampling; higher temperature makes the AI more "creative" (random), while lower temperature makes it more "focused" (deterministic).
+*   **Vectorization (Engine)**: The use of low-level optimizations (like Numba JIT) and array-based math (NumPy) to simulate thousands of game steps per second on the CPU.
