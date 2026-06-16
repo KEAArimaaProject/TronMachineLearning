@@ -4,24 +4,38 @@ The Genetic Algorithm evolves a population of neural networks by simulating game
 
 #### 1. Population & Evolution Parameters
 - **Population Size (`pop_size`)**: `64` (default in CLI examples). The number of unique "genomes" in each generation.
+  ----------- *Reference: `src/continuous_trainer.py` line 86 (class attribute) and `src/continuous_trainer.py` line 483 (default argument).*
 - **Elite Count (`elite_count`)**: `8` (default in CLI examples). The number of top-performing individuals kept for the next generation.
+  ------------ *Reference: `src/continuous_trainer.py` line 87 (class attribute) and `src/continuous_trainer.py` line 484 (default argument).*
 - **Mutation Rate**: `0.05` (5%). The probability that a specific parameter (weight/bias) will be mutated.
+  ----------- *Reference: `src/continuous_trainer.py` line 42 (default value in `make_child`).*
 - **Mutation Strength (`mutation_std`)**: `0.03`. The standard deviation of the random noise added during mutation.
+  ----------- *Reference: `src/continuous_trainer.py` line 42 (default value in `make_child`).*
 - **Crossover**: 50/50 uniform crossover (each parameter has a 50% chance to come from either parent).
+  ----------- *Reference: `src/continuous_trainer.py` line 44 (implemented via `rng.random < 0.5` mask).*
 
 #### 2. Neural Network (MLPPolicy)
 - **Hidden Layers**: Single hidden layer.
+  ----------- *Reference: `src/trainer.py` lines 275-276 (Policy uses one hidden layer).*
 - **Hidden Neurons (`hidden`)**: Configurable (typically `16`, `24`, or `48` based on CLI examples).
+  -----------*Reference: `src/continuous_trainer.py` line 85 (class attribute) and `src/continuous_trainer.py` line 482 (default argument).*
 - **Activation Function**: `Tanh` (applied at the hidden layer).
+  ----------- *Reference: `src/trainer.py` line 282 (hidden layer uses `np.tanh`).*
 - **Initialization**: Random normal distribution with a standard deviation of `0.2` (or initialized from a PPO model).
+  ----------- *Reference: `src/continuous_trainer.py` lines 221 & 223 (initialized with `rng.normal(0, 0.2)`).*
 
 #### 3. Evaluation & Fitness
 - **Evaluation Environments (`eval_envs`)**: `1024` (default). Each genome plays 1024 parallel games to determine its fitness.
+  ----------- *Reference: `src/continuous_trainer.py` line 88 (class attribute) and `src/continuous_trainer.py` line 485 (default argument).*
 - **Opponent**: `GreedySpaceController` (baseline script).
+  ----------- *Reference: `src/continuous_trainer.py` line 53 (instantiated in `evaluate_genome`).*
 - **Fitness Function**: `0.25 * winrate + 0.001 * mean_length`.
+  ----------- *Reference: `src/trainer.py` line 249 (implemented in `calculate_fitness`).*
   - Prioritizes winning (winrate is between 0 and 1).
   - Secondary goal is survival time (encourages learning even before the agent is good enough to win).
 
 #### 4. Training Workflow
 - **Checkpointing**: Every `10` generations (set via `--checkpoint_steps`).
+  ----------- *Reference: `src/continuous_trainer.py` line 92 (class attribute) and `src/continuous_trainer.py` line 272 (checkpoint logic).*
 - **Persistence**: Saved as `.npz` files (full population) and `.npy`/`.json` (best individual).
+  ----------- *Reference: `src/continuous_trainer.py` lines 140-183 (implemented in `_save_checkpoint`).*

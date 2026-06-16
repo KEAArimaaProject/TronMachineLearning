@@ -6,24 +6,41 @@ The Reinforcement Learning AI uses the **Proximal Policy Optimization (PPO)** al
 These settings control how the neural network updates its weights:
 
 - **Learning Rate (`learning_rate`)**: `3e-4` (0.0003). Determines the size of the steps taken during gradient descent.
+  ----------- *Reference: `src/continuous_trainer.py` line 290 (default argument) and line 315 (assigned to `ppo_kwargs`).*
 - **Buffer Size (`n_steps`)**: `2048`. The number of steps to run in each environment per update (Total batch size = `n_steps` * `n_envs`).
+  ----------- *Reference: `src/continuous_trainer.py` line 290 (default argument) and line 316 (assigned to `ppo_kwargs`).*
 - **Batch Size (`batch_size`)**: `64`. The number of samples used in each gradient update.
+  ----------- *Reference: `src/continuous_trainer.py` line 291 (default argument) and line 317 (assigned to `ppo_kwargs`).*
 - **Optimization Epochs (`n_epochs`)**: `10`. The number of times the optimizer passes through the collected data.
+  ----------- *Reference: `src/continuous_trainer.py` line 291 (default argument) and line 318 (assigned to `ppo_kwargs`).*
 - **GAE Lambda (`gae_lambda`)**: `0.95`. Factor for trade-off of bias vs variance for Generalized Advantage Estimator.
+  ----------- *Reference: `src/continuous_trainer.py` line 319 (set in `ppo_kwargs`).*
 - **Clip Range (`clip_range`)**: `0.2`. Limits how much the policy can change in one step to ensure stability.
+  ----------- *Reference: `src/continuous_trainer.py` line 320 (set in `ppo_kwargs`).*
 - **Entropy Coefficient (`ent_coef`)**: `0.01`. Encourages exploration by rewarding "unpredictable" actions.
+  ----------- *Reference: `src/continuous_trainer.py` line 321 (set in `ppo_kwargs`).*
 - **Value Function Coefficient (`vf_coef`)**: `0.5`. Determines the importance of the Critic's loss in the total loss function.
+  ----------- *Reference: `src/continuous_trainer.py` line 322 (set in `ppo_kwargs`).*
 - **Max Gradient Norm (`max_grad_norm`)**: `0.5`. Clips gradients to prevent them from "exploding."
+  ----------- *Reference: `src/continuous_trainer.py` line 323 (set in `ppo_kwargs`).*
 
 #### 2. Network Architecture
 - **Net Architecture (`net_arch`)**: `[256, 256]`. The agent uses two hidden layers, each with 256 neurons.
+  ----------- *Reference: `src/continuous_trainer.py` line 324 (set in `ppo_kwargs['policy_kwargs']`).*
 - **Activation Function**: Typically `Tanh` (default in Stable Baselines 3 PPO).
+  ----------- *Reference: Default behavior of SB3 PPO `MlpPolicy`.*
 
 #### 3. Environment & Training Setup
 - **Opponent Policy**: Usually set to `"greedy"` or `"random"`.
+  ----------- *Reference: `src/continuous_trainer.py` line 300 (class attribute) and line 306 (passed to `TronSingleAgentEnv`).*
 - **Observation Space**: `"lite"` mode (Ray-casted distances, relative positions, headings).
+  ----------- *Reference: `src/model.py` line 307 (implemented in `observe_lite`).*
 - **Reward Structure**: 
   - Winning: `+1.0`
+   ----------- *Reference: `src/model.py` line 283 (Winner reward in `step`).*
   - Losing: `-1.0`
+    ----------- *Reference: `src/model.py` line 262 (Died reward in `step`).*
   - Step Survival: `0.0`
+    ----------- *Reference: `src/model.py` line 232 (Default reward initialized to 0.0 in `step`).*
 - **Checkpointing**: Every `50,000` timesteps by default (set via `--checkpoint_steps`).
+  ----------- *Reference: `src/continuous_trainer.py` line 301 (class attribute) and `src/continuous_trainer.py` line 465 (checkpoint logic).*
